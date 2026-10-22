@@ -6,7 +6,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 let venues=[],groups=[],filter='all';
 let selected=null;
 const dialog=$('#place-dialog'), viewport=$('#map-viewport'), mapCanvas=$('#map-canvas');
-let scale=innerWidth<=760?1.75:1.05,panX=0,panY=0;
+let scale=1,panX=0,panY=0;
 const pointers=new Map();let dragStart=null,pinch=null,moved=false;
 function mapBounds(){
   const frame=viewport.getBoundingClientRect();
