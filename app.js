@@ -23,7 +23,13 @@ function transform(){
   const maxY=Math.max(0,(bounds.height*scale-bounds.frameHeight)/2);
   panX=Math.max(-maxX,Math.min(maxX,panX));
   panY=Math.max(-maxY,Math.min(maxY,panY));
-  mapCanvas.style.transform=`translate(-50%,-50%) translate(${panX}px,${panY}px) scale(${scale})`;
+  // Zoom SVG geometry itself; scaling a composited bitmap blurs roads and labels.
+  const units=bounds.width/281;
+  const viewWidth=bounds.frameWidth/(units*scale);
+  const viewHeight=bounds.frameHeight/(units*scale);
+  const centerX=148.5-panX/(units*scale),centerY=113-panY/(units*scale);
+  mapCanvas.style.transform='translate(-50%,-50%)';
+  $('#map-svg').setAttribute('viewBox',`${centerX-viewWidth/2} ${centerY-viewHeight/2} ${viewWidth} ${viewHeight}`);
   $('#zoom-out').disabled=scale<=bounds.minScale+.0001;
   $('#zoom-in').disabled=scale>=5;
 }
@@ -36,6 +42,20 @@ window.addEventListener('pointerup',release);window.addEventListener('pointercan
 viewport.addEventListener('wheel',e=>{if(e.ctrlKey||e.metaKey){e.preventDefault();zoom(e.deltaY<0?1.08:1/1.08);}},{passive:false});
 transform();
 new ResizeObserver(()=>transform()).observe(viewport);
+fetch('assets/neighborhood-map.svg').then(r=>{
+  if(!r.ok)throw Error(r.status);
+  return r.text();
+}).then(source=>{
+  const svg=new DOMParser().parseFromString(source,'image/svg+xml');
+  if(svg.querySelector('parsererror')||svg.querySelector('image'))throw Error('Invalid vector map');
+  $('#map-art').replaceChildren(...[...svg.documentElement.children].map(child=>document.importNode(child,true)));
+  $('#map-loading').hidden=true;
+}).catch(()=>{
+  const image=document.createElementNS('http://www.w3.org/2000/svg','image');
+  for(const [key,value]of Object.entries({href:'assets/neighborhood-map.png',x:8,y:42,width:281,height:142}))image.setAttribute(key,value);
+  $('#map-art').replaceChildren(image);
+  $('#map-loading').hidden=true;
+});
 function badge(p){return `<span class="symbol ${p.category}" aria-hidden="true">${p.category==='sight'?'<i>':''}${String(p.no).padStart(2,'0')}${p.category==='sight'?'</i>':''}</span>`;}
 function list(){const query=$('#search').value.trim().toLocaleLowerCase('ko');$('#clear-search').hidden=!query;const found=groups.filter(g=>(filter==='all'||g[0].category===filter)&&g.some(p=>`${p.display} ${p.note} ${p.short_address}`.toLocaleLowerCase('ko').includes(query)));$('#result-count').textContent=`${query?'검색 ':''}${found.reduce((n,g)=>n+g.length,0)}곳`;
 $('#venue-list').innerHTML=found.length?found.map(g=>{const p=g[0],name=g.length>1?'피터팬1978':p.display,addr=g.length>1?g.map(p=>`${p.display.includes('본점')?'본점':'원천교회점'} · ${p.short_address}`).join(' / '):p.short_address;return `<button type="button" class="venue-row" data-id="${esc(p.map_id)}" aria-label="${esc(name)}, 장소 정보 보기">${badge(p)}<span class="venue-copy"><span class="venue-head"><strong>${esc(name)}</strong><span class="note">${esc(p.note)}</span></span><span class="address">${esc(addr)}</span></span><span class="venue-arrow" aria-hidden="true">↗</span></button>`;}).join(''):'<p class="empty"><strong>아직 없는 취향이네요.</strong>다른 이름이나 메뉴로 찾아보세요.</p>';
