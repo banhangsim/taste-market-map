@@ -8,15 +8,34 @@ let selected=null;
 const dialog=$('#place-dialog'), viewport=$('#map-viewport'), mapCanvas=$('#map-canvas');
 let scale=innerWidth<=760?1.75:1.05,panX=0,panY=0;
 const pointers=new Map();let dragStart=null,pinch=null,moved=false;
-function transform(){mapCanvas.style.transform=`translate(-50%,-50%) translate(${panX}px,${panY}px) scale(${scale})`;$('#zoom-out').disabled=scale<=.75;$('#zoom-in').disabled=scale>=5;}
-function zoom(factor){scale=Math.max(.75,Math.min(5,scale*factor));transform();}
-$('#zoom-in').onclick=()=>zoom(1.35);$('#zoom-out').onclick=()=>zoom(1/1.35);$('#zoom-reset').onclick=()=>{scale=1;panX=panY=0;transform();};
+function mapBounds(){
+  const frame=viewport.getBoundingClientRect();
+  const canvasStyle=getComputedStyle(mapCanvas);
+  const width=parseFloat(canvasStyle.width),height=parseFloat(canvasStyle.height);
+  return {width,height,frameWidth:frame.width,frameHeight:frame.height,
+    minScale:Math.max(frame.width/width,frame.height/height)};
+}
+function transform(){
+  const bounds=mapBounds();
+  scale=Math.max(bounds.minScale,Math.min(5,scale));
+  // Keep the image covering the frame, even after dragging, pinching or resizing.
+  const maxX=Math.max(0,(bounds.width*scale-bounds.frameWidth)/2);
+  const maxY=Math.max(0,(bounds.height*scale-bounds.frameHeight)/2);
+  panX=Math.max(-maxX,Math.min(maxX,panX));
+  panY=Math.max(-maxY,Math.min(maxY,panY));
+  mapCanvas.style.transform=`translate(-50%,-50%) translate(${panX}px,${panY}px) scale(${scale})`;
+  $('#zoom-out').disabled=scale<=bounds.minScale+.0001;
+  $('#zoom-in').disabled=scale>=5;
+}
+function zoom(factor){scale*=factor;transform();}
+$('#zoom-in').onclick=()=>zoom(1.35);$('#zoom-out').onclick=()=>zoom(1/1.35);$('#zoom-reset').onclick=()=>{scale=mapBounds().minScale;panX=panY=0;transform();};
 viewport.addEventListener('pointerdown',e=>{if(e.button&&e.button!==0)return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=false;if(pointers.size===1)dragStart={x:e.clientX,y:e.clientY,panX,panY};if(pointers.size===2){const [a,b]=[...pointers.values()];pinch={dist:Math.hypot(a.x-b.x,a.y-b.y),scale};}});
-window.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2&&pinch){const [a,b]=[...pointers.values()];scale=Math.max(.75,Math.min(5,pinch.scale*Math.hypot(a.x-b.x,a.y-b.y)/pinch.dist));moved=true;transform();}else if(pointers.size===1&&dragStart){const dx=e.clientX-dragStart.x,dy=e.clientY-dragStart.y;if(Math.hypot(dx,dy)>5||moved){moved=true;viewport.classList.add('dragging');panX=dragStart.panX+dx;panY=dragStart.panY+dy;transform();}}});
+window.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2&&pinch){const [a,b]=[...pointers.values()];scale=pinch.scale*Math.hypot(a.x-b.x,a.y-b.y)/pinch.dist;moved=true;transform();}else if(pointers.size===1&&dragStart){const dx=e.clientX-dragStart.x,dy=e.clientY-dragStart.y;if(Math.hypot(dx,dy)>5||moved){moved=true;viewport.classList.add('dragging');panX=dragStart.panX+dx;panY=dragStart.panY+dy;transform();}}});
 function release(e){pointers.delete(e.pointerId);if(pointers.size===0){dragStart=null;pinch=null;viewport.classList.remove('dragging');}else{const p=[...pointers.values()][0];dragStart={x:p.x,y:p.y,panX,panY};pinch=null;}}
 window.addEventListener('pointerup',release);window.addEventListener('pointercancel',release);
 viewport.addEventListener('wheel',e=>{if(e.ctrlKey||e.metaKey){e.preventDefault();zoom(e.deltaY<0?1.08:1/1.08);}},{passive:false});
 transform();
+new ResizeObserver(()=>transform()).observe(viewport);
 function badge(p){return `<span class="symbol ${p.category}" aria-hidden="true">${p.category==='sight'?'<i>':''}${String(p.no).padStart(2,'0')}${p.category==='sight'?'</i>':''}</span>`;}
 function list(){const query=$('#search').value.trim().toLocaleLowerCase('ko');$('#clear-search').hidden=!query;const found=groups.filter(g=>(filter==='all'||g[0].category===filter)&&g.some(p=>`${p.display} ${p.note} ${p.short_address}`.toLocaleLowerCase('ko').includes(query)));$('#result-count').textContent=`${query?'검색 ':''}${found.reduce((n,g)=>n+g.length,0)}곳`;
 $('#venue-list').innerHTML=found.length?found.map(g=>{const p=g[0],name=g.length>1?'피터팬1978':p.display,addr=g.length>1?g.map(p=>`${p.display.includes('본점')?'본점':'원천교회점'} · ${p.short_address}`).join(' / '):p.short_address;return `<button type="button" class="venue-row" data-id="${esc(p.map_id)}" aria-label="${esc(name)}, 장소 정보 보기">${badge(p)}<span class="venue-copy"><span class="venue-head"><strong>${esc(name)}</strong><span class="note">${esc(p.note)}</span></span><span class="address">${esc(addr)}</span></span><span class="venue-arrow" aria-hidden="true">↗</span></button>`;}).join(''):'<p class="empty"><strong>아직 없는 취향이네요.</strong>다른 이름이나 메뉴로 찾아보세요.</p>';
